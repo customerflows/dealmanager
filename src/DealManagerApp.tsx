@@ -2163,16 +2163,14 @@ function Sidebar({ onNew, totalCount, activeView, onViewChange, peopleCount, use
 
       {/* Footer — Account */}
       <div className="px-2 py-3" style={{ borderTop: '1px solid var(--sidebar-border)' }}>
-        {isAdmin && (
-          <button
-            onClick={onToggleViewAll}
-            className="w-full flex items-center gap-2 px-2.5 py-2 mb-1 rounded-lg ff-sans text-[11.5px] font-medium transition-colors"
-            style={{ color: 'var(--sidebar-text-soft)' }}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={2} />
-            <span className="truncate">{viewAll ? 'Alle Deals' : 'Meine Deals'}</span>
-          </button>
-        )}
+        <button
+          onClick={onToggleViewAll}
+          className="w-full flex items-center gap-2 px-2.5 py-2 mb-1 rounded-lg ff-sans text-[11.5px] font-medium transition-colors"
+          style={{ color: 'var(--sidebar-text-soft)' }}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={2} />
+          <span className="truncate">{viewAll ? 'Alle Deals' : 'Meine Deals'}</span>
+        </button>
         <div className="px-2.5 py-1 ff-sans text-[10.5px] truncate" style={{ color: 'var(--sidebar-text-muted)' }}>
           {userEmail}
         </div>
@@ -9369,8 +9367,11 @@ export default function DealManagerApp({ userId, userEmail, isAdmin, onSignOut }
   const [searchQuery, setSearchQuery] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [rejectionPrompt, setRejectionPrompt] = useState(null); // { propertyId } wenn Modal offen
-  // Admin-only: 'meine' vs. 'alle' Deals/Personen anzeigen
-  const [viewAll, setViewAll] = useState(false);
+  // Alle Accounts teilen sich einen Datenbestand; 'Meine Deals' ist nur noch
+  // ein optionaler persönlicher Filter, keine Zugriffsgrenze mehr.
+  const [viewAll, setViewAll] = useState(true);
+  const knownPropertyIdsRef = useRef(new Set());
+  const knownPersonIdsRef = useRef(new Set());
 
   useEffect(() => {
     setLoaded(false);
@@ -9380,6 +9381,8 @@ export default function DealManagerApp({ userId, userEmail, isAdmin, onSignOut }
     ]).then(([props, persons]) => {
       setProperties(props.map(migrateProperty));
       setManualPersons(persons);
+      knownPropertyIdsRef.current = new Set(props.map(p => p.id));
+      knownPersonIdsRef.current = new Set(persons.map(p => p.id));
       setLoaded(true);
     }).catch(e => {
       console.error('Laden fehlgeschlagen:', e);
@@ -9392,24 +9395,28 @@ export default function DealManagerApp({ userId, userEmail, isAdmin, onSignOut }
   useEffect(() => {
     if (!loaded) return;
     const t = setTimeout(() => {
-      persistProperties(properties, userId, viewAll).catch(e => {
+      persistProperties(properties, userId, knownPropertyIdsRef.current).then(() => {
+        knownPropertyIdsRef.current = new Set(properties.map(p => p.id));
+      }).catch(e => {
         console.error('persistProperties fehlgeschlagen:', e);
         setError('Speichern fehlgeschlagen: ' + (e.message || e));
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [properties, loaded, userId, viewAll]);
+  }, [properties, loaded, userId]);
 
   // Manuelle Personen persistieren (debounced)
   useEffect(() => {
     if (!loaded) return;
     const t = setTimeout(() => {
-      persistManualPersons(manualPersons, userId, viewAll).catch(e => {
+      persistManualPersons(manualPersons, userId, knownPersonIdsRef.current).then(() => {
+        knownPersonIdsRef.current = new Set(manualPersons.map(p => p.id));
+      }).catch(e => {
         console.error('persistManualPersons fehlgeschlagen:', e);
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [manualPersons, loaded, userId, viewAll]);
+  }, [manualPersons, loaded, userId]);
 
   const handleUploadBatch = async (files) => {
     setError(null);

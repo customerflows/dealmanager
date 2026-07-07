@@ -60,20 +60,20 @@ export async function fetchProperties(userId: string, viewAll: boolean) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function persistProperties(properties: any[], userId: string, viewAll: boolean) {
+export async function persistProperties(properties: any[], userId: string, knownIds: Iterable<string>) {
   const rows = properties.map((p) => propertyToRow(p, userId));
   if (rows.length) {
     const { error } = await supabase.from('properties').upsert(rows);
     if (error) throw error;
   }
 
-  let existingQuery = supabase.from('properties').select('id');
-  if (!viewAll) existingQuery = existingQuery.eq('user_id', userId);
-  const { data: existing, error: existingError } = await existingQuery;
-  if (existingError) throw existingError;
-
+  // Delete only rows that were part of THIS client's last-loaded snapshot and
+  // are now missing locally (an explicit removal). We deliberately don't
+  // re-query "what exists on the server right now" — in a shared workspace
+  // another user may have added rows this client hasn't fetched yet, and
+  // diffing against live server state would delete those out from under them.
   const currentIds = new Set(properties.map((p) => p.id));
-  const toDelete = (existing ?? []).map((r) => r.id).filter((id) => !currentIds.has(id));
+  const toDelete = [...knownIds].filter((id) => !currentIds.has(id));
   if (toDelete.length) {
     const { error: deleteError } = await supabase.from('properties').delete().in('id', toDelete);
     if (deleteError) throw deleteError;
@@ -121,20 +121,17 @@ export async function fetchManualPersons(userId: string, viewAll: boolean) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function persistManualPersons(persons: any[], userId: string, viewAll: boolean) {
+export async function persistManualPersons(persons: any[], userId: string, knownIds: Iterable<string>) {
   const rows = persons.map((p) => personToRow(p, userId));
   if (rows.length) {
     const { error } = await supabase.from('manual_persons').upsert(rows);
     if (error) throw error;
   }
 
-  let existingQuery = supabase.from('manual_persons').select('id');
-  if (!viewAll) existingQuery = existingQuery.eq('user_id', userId);
-  const { data: existing, error: existingError } = await existingQuery;
-  if (existingError) throw existingError;
-
+  // See persistProperties — only delete rows this client's own snapshot knew
+  // about and has since dropped, never rows it simply hasn't fetched yet.
   const currentIds = new Set(persons.map((p) => p.id));
-  const toDelete = (existing ?? []).map((r) => r.id).filter((id) => !currentIds.has(id));
+  const toDelete = [...knownIds].filter((id) => !currentIds.has(id));
   if (toDelete.length) {
     const { error: deleteError } = await supabase.from('manual_persons').delete().in('id', toDelete);
     if (deleteError) throw deleteError;
