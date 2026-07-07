@@ -182,3 +182,50 @@ export async function getDocumentDownloadUrl(path: string): Promise<string | nul
   }
   return data?.signedUrl ?? null;
 }
+
+// ---------------------------------------------------------------
+// PDF extraction (extract-pdf Edge Function)
+// ---------------------------------------------------------------
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1] ?? '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+type ExtractPdfOptions =
+  | { mode: 'single' }
+  | { mode: 'combined'; propertyType?: string };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function extractPdfData(files: File[], options: ExtractPdfOptions): Promise<any> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Nicht angemeldet.');
+
+  const encoded = await Promise.all(files.map(async (f) => ({ name: f.name, data: await fileToBase64(f) })));
+  const body =
+    options.mode === 'combined'
+      ? { mode: 'combined', files: encoded, propertyType: options.propertyType }
+      : { mode: 'single', file: encoded[0] };
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/extract-pdf`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) {
+    throw new Error(json.error || `Extraktion fehlgeschlagen (${res.status}).`);
+  }
+  return json;
+}

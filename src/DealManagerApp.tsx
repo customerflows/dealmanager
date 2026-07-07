@@ -19,6 +19,7 @@ import {
   fetchProperties, persistProperties,
   fetchManualPersons, persistManualPersons,
   uploadPropertyDocuments, getDocumentDownloadUrl,
+  extractPdfData,
 } from '@/lib/dealsApi';
 
 // =============================================================
@@ -898,39 +899,21 @@ function migrateProperty(p) {
 }
 
 // =============================================================
-// API — AI-Extraktion (STUB)
+// API — AI-Extraktion
 // =============================================================
-// The original artifact called api.anthropic.com directly from the browser,
-// relying on auth the Claude Artifacts sandbox injects for free. That doesn't
-// exist in a real deployment (no key, no CORS allowance), so calling it here
-// would just fail. TODO(ai-extraction): wire this up to a Supabase Edge
-// Function that holds the Anthropic API key server-side and proxies the
-// call — see supabase/functions/extract-pdf/index.ts, which already has the
-// original extraction prompts and JSON-repair logic ported over and ready to
-// enable. Until then, uploaded PDFs are archived in Supabase Storage (see
-// uploadPropertyDocuments in @/lib/dealsApi) and the deal is created with
-// empty fields for manual entry.
+// Proxies to the extract-pdf Supabase Edge Function (see
+// supabase/functions/extract-pdf/index.ts), which holds the Anthropic API
+// key server-side. Requires that function to be deployed with
+// ANTHROPIC_API_KEY set as a secret — otherwise it returns a 501 and the
+// error surfaces in the upload UI same as any other extraction failure.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function emptyExtractionResult(propertyType) {
-  return {
-    objectType: propertyType === 'apartment' ? 'Eigentumswohnung' : propertyType === 'multifamily' ? 'Mehrfamilienhaus' : undefined,
-    deadlines: [],
-    riskAnalysis: [],
-    saleUnits: [],
-    contacts: [],
-    tenantSchedule: [],
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function extractFromPDF(file) {
-  return emptyExtractionResult(null);
+  return extractPdfData([file], { mode: 'single' });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function extractFromMultiplePDFs(files, propertyType) {
-  return emptyExtractionResult(propertyType);
+  return extractPdfData(files, { mode: 'combined', propertyType });
 }
 
 // =============================================================
