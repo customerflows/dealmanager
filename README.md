@@ -86,18 +86,17 @@ Add your own domain in whichever platform's dashboard once deployed.
 - **PDF storage**: uploaded PDFs are now archived in the private `deal-documents`
   bucket (they used to be discarded after extraction). A download link appears in
   the deal detail footer.
-- **AI extraction — stubbed, not removed**: the artifact called
+- **AI extraction — live via Edge Function**: the artifact called
   `api.anthropic.com` directly from the browser, which only works inside the
   Artifacts sandbox (it injects auth you don't have in a real deployment — this
   call would fail with CORS/401 in production). `extractFromPDF()` /
-  `extractFromMultiplePDFs()` in `DealManagerApp.tsx` are now stubs that return an
-  empty, correctly-shaped result so uploads still create a deal (for manual
-  entry) without erroring. The original extraction prompts and JSON-repair logic
-  are preserved and ready to deploy in
-  [`supabase/functions/extract-pdf/index.ts`](supabase/functions/extract-pdf/index.ts) —
-  see the comment at the top of that file for the two steps to re-enable it
-  (`supabase secrets set ANTHROPIC_API_KEY=...`, deploy the function, swap the
-  stub for a `fetch` call).
+  `extractFromMultiplePDFs()` in `DealManagerApp.tsx` now call
+  [`supabase/functions/extract-pdf/index.ts`](supabase/functions/extract-pdf/index.ts)
+  (deployed, `ANTHROPIC_API_KEY` set as a secret) via `extractPdfData()` in
+  `src/lib/dealsApi.ts` — it base64-encodes the file(s) and forwards the
+  user's Supabase session token; the function proxies to Claude server-side
+  and returns parsed JSON. The original extraction prompts and JSON-repair
+  logic are unchanged, only where they run.
 - **`// @ts-nocheck`** at the top of `DealManagerApp.tsx`: the artifact is written
   in loose, untyped JS-in-TSX style throughout (no prop types anywhere). Rather
   than retrofit types across 10k lines, that one file opts out of type-checking;
